@@ -236,14 +236,3 @@ class StoreDownloader(object):
         """Export data to output_file
         """
         pass
-
-
-def main():
-
-    downloader = StoreDownloader()
-    data = downloader.process("/tmp/stores.csv")
-    print data
-
-
-if __name__ == '__main__':
-    main()
