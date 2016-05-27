@@ -86,7 +86,7 @@ class ShopifyStore(BaseStore):
                 # The query component is indicated by the first question mark
                 product_url = href.split("?")[0]
                 if product_url not in links:
-                    # we can use set() because we need preserve order of links
+                    # we can't use set() because we need preserve order of links
                     links.append(product_url)
 
         return [l for l in links]
