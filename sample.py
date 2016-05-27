@@ -8,6 +8,8 @@ import requests
 LOGGER = logging.getLogger(name=__file__)
 
 
+# Store classes should be placed in separate file
+# but for purpose of this task is not necessary
 class BaseStore(object):
 
     base_browse_url = None
@@ -39,12 +41,12 @@ class BaseStore(object):
             for p in product_links[:count]:
                 product = self.product_data(p)
                 if product:
-                    p = {"title": product["title"]}
-                    if product.get("image", None):
-                        p["image"] = product["image"]["src"]
-                    products_data.append(p)
+                    products_data.append(self.get_product_data(product))
 
         return products_data
+
+    def get_product_data(self, product_data):
+        raise NotImplementedError
 
     def products_links(self, content):
         """Method for finding product's links in given content.
@@ -59,8 +61,17 @@ class BaseStore(object):
 class ShopifyStore(BaseStore):
     base_browse_url = "/collections/all/"
 
+    def get_product_data(self, product_data):
+        product = {"title": product_data["title"], "image": "-"}
+
+        if product_data.get("image", None):
+            product["image"] = product_data["image"]["src"]
+
+        return product
+
+    # Shopify specific products selector
     def products_links(self, content):
-        links = set()
+        links = []
 
         product_selectors = [
             'a[href^=/products/]',
@@ -74,7 +85,9 @@ class ShopifyStore(BaseStore):
                 # Remove GET parameters
                 # The query component is indicated by the first question mark
                 product_url = href.split("?")[0]
-                links.add(product_url)
+                if product_url not in links:
+                    # we can use set() because we need preserve order of links
+                    links.append(product_url)
 
         return [l for l in links]
 
@@ -102,10 +115,12 @@ class StoreDownloader(object):
         stores = set()
 
         with open(source_file, 'rb') as f:
-            #reader = csv.reader(f)
-            reader = csv.DictReader(f)
+            reader = csv.reader(f)
+            # skip header
+            next(reader, None)
             for store in reader:
-                url = store["url"]
+                #url = store["url"]
+                url = store[0]
                 if not url.startswith("http"):
                     url = "http://{url}".format(url=url)
                 stores.add(url)
@@ -113,7 +128,7 @@ class StoreDownloader(object):
         return stores
 
     def read_stores(self, source_file):
-        """Return unique set of store url to process
+        """Return unique set of store to process
         """
         stores = []
 
@@ -148,9 +163,10 @@ class StoreDownloader(object):
     def find_twitter_links(self, content):
         return self._find_links(content, "a[href*=twitter.com]")
 
+    # We are logging for emails, facebook and twitter links
     def find_links(self, store_url, pages_to_process=None):
-        # For this task purposes we are looking for emails,
-        # facebook and twitter links
+        """Search for required informations
+        """
 
         data = {
             "emails": set(),
@@ -177,10 +193,6 @@ class StoreDownloader(object):
             except requests.exceptions.HTTPError:
                 # skip all 4XX 5XX pages
                 continue
-            except requests.exceptions.ConnectionError as e:
-                # Skip store which not exists
-                # TODO (pt) logging
-                raise e
 
             # emails
             data["emails"].update(self.find_emails(response.content))
@@ -205,7 +217,24 @@ class StoreDownloader(object):
 
         return ShopifyStore
 
-    def process(self, source_file):
+    # export data to csv file
+    def export(self, output_file, output_data):
+        """Write output data to csv
+        """
+        with open(output_file, "wb") as f:
+            writer = csv.writer(f)
+            for store, data in output_data.iteritems():
+                row = [store]
+                # links
+                for link_type, links in data["links"].iteritems():
+                    row.append(",".join(links))
+                # products data
+                for product in data["products"]:
+                    for attr in product.values():
+                        row.append(attr.encode("UTF-8"))
+                writer.writerow(row)
+
+    def process(self, source_file, output_file=None):
         output_data = {}
 
         stores = self.read_stores(source_file)
@@ -219,9 +248,10 @@ class StoreDownloader(object):
             # This is not store related method - it just contnet parsing
             try:
                 data["links"] = self.find_links(store)
-            except requests.exceptions.ConnectionError:
+            except requests.exceptions.RequestException:
                 # Skip stores which not exits
-                data[store] = None
+                # Should export also contains not existing domains ?
+                #data[store] = None
                 continue
 
             # 2. Find products
@@ -230,9 +260,7 @@ class StoreDownloader(object):
 
             output_data[store] = data
 
-        return output_data
+        if output_file and output_data:
+            self.export(output_file, output_data)
 
-    def dumpdata(self, output_file):
-        """Export data to output_file
-        """
-        pass
+        return output_data
