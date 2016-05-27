@@ -249,7 +249,7 @@ class StoreDownloader(object):
             try:
                 data["links"] = self.find_links(store)
             except requests.exceptions.RequestException:
-                # Skip stores which not exits
+                # Skip stores which does not exit
                 # Should export also contains not existing domains ?
                 #data[store] = None
                 continue
